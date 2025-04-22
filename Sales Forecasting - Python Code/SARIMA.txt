@@ -1,0 +1,46 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+dataset['Month'] = pd.to_datetime(dataset['Month'], format='%B').dt.month
+dataset['Date'] = pd.to_datetime(dataset[['Year', 'Month']].assign(Day=1))
+dataset = dataset.sort_values('Date')
+monthly_sales = dataset.groupby('Date').agg({'Sales': 'sum'}).reset_index()
+monthly_sales.set_index('Date', inplace=True)
+
+model = SARIMAX(monthly_sales['Sales'], order=(1, 1, 1), seasonal_order=(1, 1, 1, 12), enforce_stationarity=False, enforce_invertibility=False)
+results = model.fit()
+
+forecast = results.get_forecast(steps=6)
+forecast_index = pd.date_range(monthly_sales.index[-1], periods=7, freq='M')[1:]
+forecast_values = forecast.predicted_mean
+
+last_actual_date = monthly_sales.index[-1]
+last_actual_value = monthly_sales['Sales'].iloc[-1]
+
+forecast_df = pd.DataFrame({
+    'Date': np.insert(forecast_index.values, 0, last_actual_date),
+    'Predicted_Sales': np.insert(forecast_values.values, 0, last_actual_value)
+})
+forecast_df.set_index('Date', inplace=True)
+
+combined_df = monthly_sales[['Sales']].join(results.fittedvalues.rename('Fitted_Sales')).reset_index()
+combined_df = pd.concat([combined_df, forecast_df.reset_index()], ignore_index=True)
+
+
+combined_df.loc[combined_df['Date'] > last_actual_date, 'Sales'] = np.nan
+
+
+plt.figure(figsize=(12, 6))
+plt.plot(combined_df['Date'], combined_df['Sales'], label='Actual Sales', color='blue', marker='o')
+plt.plot(combined_df['Date'], combined_df['Fitted_Sales'], linestyle='--', color='orange', label='Fitted Sales')
+plt.plot(combined_df['Date'], combined_df['Predicted_Sales'], linestyle='--', color='red', label='Forecasted Sales')
+
+plt.xticks(rotation=45)
+plt.xlabel('Date')
+plt.ylabel('Sales')
+plt.title('Sales Forecasting - SARIMA')
+plt.legend()
+plt.tight_layout()
+plt.show()

@@ -1,0 +1,71 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+import matplotlib.pyplot as plt
+
+# Power BI automatically imports the dataset as a dataframe named 'dataset'
+
+# Convert the Month names to numerical values
+dataset['Month'] = pd.to_datetime(dataset['Month'], format='%B').dt.month
+
+# Create a Date column by combining Year and Month
+dataset['Date'] = pd.to_datetime(dataset[['Year', 'Month']].assign(Day=1))
+
+# Sort the data by Date
+dataset = dataset.sort_values('Date')
+
+# Aggregate sales by month
+monthly_sales = dataset.groupby('Date').agg({'Sales': 'sum'}).reset_index()
+
+# Prepare the feature and target variables
+monthly_sales['Month_Num'] = np.arange(len(monthly_sales))
+X = monthly_sales[['Month_Num']]
+y = monthly_sales['Sales']
+
+# Split the data into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+# Train the linear regression model
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Generate predictions for the actual data
+monthly_sales['Predicted_Sales'] = model.predict(X)
+
+# Extend the forecast to the next 6 months
+future_months = np.arange(len(monthly_sales), len(monthly_sales) + 6).reshape(-1, 1)
+future_sales = model.predict(future_months)
+
+# Create future dates for the forecast
+last_date = monthly_sales['Date'].max()
+future_dates = pd.date_range(last_date, periods=7, freq='M')[1:]
+
+# Create a DataFrame for future predictions
+future_df = pd.DataFrame({
+    'Date': future_dates,
+    'Predicted_Sales': future_sales
+})
+
+# Combine actual and forecasted data
+combined_df = pd.concat([monthly_sales[['Date', 'Sales', 'Predicted_Sales']], future_df], ignore_index=True)
+
+# Adjust the combined data to ensure no actual sales data appears in the forecast period
+combined_df.loc[combined_df['Date'] > last_date, 'Sales'] = np.nan
+
+# Plot the results
+plt.figure(figsize=(12, 6))
+
+# Plot actual sales with markers for clarity
+plt.plot(combined_df['Date'], combined_df['Sales'], label='Actual Sales', color='blue', marker='o')
+
+# Plot fitted/forecasted sales with a different line style and color
+plt.plot(combined_df['Date'], combined_df['Predicted_Sales'], label='Fitted/Forecasted Sales', linestyle='--', color='red')
+
+plt.xticks(rotation=45)
+plt.xlabel('Date')
+plt.ylabel('Sales')
+plt.title('Sales Forecasting - Linear Regression')
+plt.legend()
+plt.tight_layout()
+plt.show()
